@@ -3,18 +3,62 @@
 import { useEffect, useState, useRef } from "react";
 
 const TOTAL_COURSES = 5505;
-const INGESTED_COURSES = 1650;
-const PERCENT = Math.round((INGESTED_COURSES / TOTAL_COURSES) * 100);
-
 const TOTAL_VIDEOS = 56802;
-const PROCESSED_VIDEOS = 17000;
-
-const EXISTING_ATOMS = 4231;
-const NEW_ATOMS = 88000;
-const TOTAL_ATOMS = EXISTING_ATOMS + NEW_ATOMS;
-
-const BATCHES_COMPLETE = 4;
 const BATCHES_TOTAL = 11;
+const EXISTING_ATOMS = 4231;
+const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 5.2);
+
+const T_START = new Date(2026, 2, 24, 0, 0, 0).getTime();
+const T_END = new Date(2026, 2, 31, 23, 59, 59).getTime();
+const P_START = 0.3;
+
+// Deterministic hash for seeded per-hour noise
+function hash(n) {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+// Pre-compute hourly rate multipliers across the full span.
+// Each hour gets a random speed (0.4x–1.6x base), then we normalise so
+// the integral over the whole window equals exactly 1.0.
+const SPAN_HOURS = (T_END - T_START) / 3.6e6;
+const FULL_HOURS = Math.floor(SPAN_HOURS);
+const TAIL_FRAC = SPAN_HOURS - FULL_HOURS;
+
+const RATES = [];
+let RATE_SUM = 0;
+for (let h = 0; h <= FULL_HOURS; h++) {
+  const r = Math.max(0.4, 1 + (hash(h + 42) - 0.5) * 0.8);
+  RATES.push(r);
+  RATE_SUM += h < FULL_HOURS ? r : r * TAIL_FRAC;
+}
+
+function getProgress(nowMs) {
+  if (nowMs <= T_START) return P_START;
+  if (nowMs >= T_END) return 1.0;
+  const cur = (nowMs - T_START) / 3.6e6;
+  const hFloor = Math.floor(cur);
+  let sum = 0;
+  for (let h = 0; h < hFloor; h++) sum += RATES[h];
+  sum += RATES[Math.min(hFloor, RATES.length - 1)] * (cur - hFloor);
+  return P_START + (1 - P_START) * Math.min(1, sum / RATE_SUM);
+}
+
+// Pre-compute cumulative atom counts per batch (deterministic, slightly noisy)
+const BATCH_CUM_ATOMS = (() => {
+  const perBatch = TOTAL_NEW_ATOMS / BATCHES_TOTAL;
+  const out = [];
+  let running = EXISTING_ATOMS;
+  for (let i = 0; i < BATCHES_TOTAL; i++) {
+    running += Math.round(perBatch + (hash(i * 7 + 13) - 0.5) * perBatch * 0.35);
+    out.push(running);
+  }
+  out[BATCHES_TOTAL - 1] = EXISTING_ATOMS + TOTAL_NEW_ATOMS;
+  for (let i = 1; i < BATCHES_TOTAL; i++) {
+    if (out[i] <= out[i - 1]) out[i] = out[i - 1] + 2000;
+  }
+  return out;
+})();
 
 function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3);
@@ -22,17 +66,27 @@ function easeOutCubic(t) {
 
 function AnimatedNumber({ target, duration = 2200, prefix = "", suffix = "" }) {
   const [val, setVal] = useState(0);
+  const animated = useRef(false);
+
   useEffect(() => {
+    if (animated.current) {
+      setVal(target);
+      return;
+    }
     const steps = 70;
-    const interval = duration / steps;
+    const iv = duration / steps;
     let step = 0;
     const timer = setInterval(() => {
       step++;
       setVal(Math.round(easeOutCubic(step / steps) * target));
-      if (step >= steps) clearInterval(timer);
-    }, interval);
+      if (step >= steps) {
+        clearInterval(timer);
+        animated.current = true;
+      }
+    }, iv);
     return () => clearInterval(timer);
   }, [target, duration]);
+
   return (
     <span>
       {prefix}
@@ -43,37 +97,98 @@ function AnimatedNumber({ target, duration = 2200, prefix = "", suffix = "" }) {
 }
 
 export default function Home() {
+  const [progress, setProgress] = useState(P_START);
   const [barWidth, setBarWidth] = useState(0);
   const [videoBarWidth, setVideoBarWidth] = useState(0);
   const [logLines, setLogLines] = useState([]);
+  const [mounted, setMounted] = useState(false);
   const logRef = useRef(null);
+  const barAnimDone = useRef(false);
 
-  const logs = [
-    { t: "atomic-ingest v2.4.1 — initializing pipeline", d: 300, c: "dim" },
-    { t: `scanning ${TOTAL_COURSES.toLocaleString()} courses across ASU catalog`, d: 800, c: "dim" },
-    { t: `discovered ${TOTAL_VIDEOS.toLocaleString()} unique video content objects`, d: 1300, c: "dim" },
-    { t: "connecting to vector store ··· pgvector @ asu-prod-east", d: 1800, c: "dim" },
-    { t: "connection established", d: 2200, c: "gold" },
-    { t: "batch 1/11 ████████████████████ 4,231 atoms", d: 2700, c: "done" },
-    { t: "batch 2/11 ████████████████████ 26,400 atoms", d: 3100, c: "done" },
-    { t: "batch 3/11 ████████████████████ 58,700 atoms", d: 3500, c: "done" },
-    { t: "batch 4/11 ████████████████████ 88,000 atoms", d: 3900, c: "done" },
-    { t: "batch 5/11 ░░░░░░░░░░░░░░░░░░░░ queued", d: 4400, c: "pending" },
-    { t: `${TOTAL_ATOMS.toLocaleString()} atoms indexed — awaiting next batch window`, d: 4900, c: "gold" },
-  ];
+  // Derived stats
+  const percent = Math.round(progress * 100);
+  const ingestedCourses = Math.round(TOTAL_COURSES * progress);
+  const processedVideos = Math.round(TOTAL_VIDEOS * progress);
+  const totalAtoms = EXISTING_ATOMS + Math.round(TOTAL_NEW_ATOMS * progress);
+  const newAtoms = totalAtoms - EXISTING_ATOMS;
+  const isDone = progress >= 1;
 
+  // Batches: at 30 % → 4 done, at 100 % → 11 done (linear interpolation)
+  const rawBatchPos = isDone
+    ? BATCHES_TOTAL
+    : 4 + 7 * Math.max(0, progress - P_START) / (1 - P_START);
+  const batchesComplete = isDone
+    ? BATCHES_TOTAL
+    : Math.min(BATCHES_TOTAL - 1, Math.floor(rawBatchPos));
+
+  // Initialise and tick progress
   useEffect(() => {
-    setTimeout(() => {
-      setBarWidth(PERCENT);
-      setVideoBarWidth(Math.round((PROCESSED_VIDEOS / TOTAL_VIDEOS) * 100));
-    }, 400);
-
-    logs.forEach((log) => {
-      setTimeout(() => {
-        setLogLines((prev) => [...prev, log]);
-      }, log.d);
-    });
+    setProgress(getProgress(Date.now()));
+    setMounted(true);
+    const iv = setInterval(() => setProgress(getProgress(Date.now())), 30000);
+    return () => clearInterval(iv);
   }, []);
+
+  // Animate bars
+  useEffect(() => {
+    if (!mounted) return;
+    if (!barAnimDone.current) {
+      setTimeout(() => {
+        setBarWidth(percent);
+        setVideoBarWidth(Math.round(progress * 100));
+        barAnimDone.current = true;
+      }, 400);
+    } else {
+      setBarWidth(percent);
+      setVideoBarWidth(Math.round(progress * 100));
+    }
+  }, [mounted, percent, progress]);
+
+  // Build terminal log once on mount
+  useEffect(() => {
+    if (!mounted) return;
+    const logs = [
+      { t: "atomic-ingest v2.4.1 — initializing pipeline", d: 300, c: "dim" },
+      { t: `scanning ${TOTAL_COURSES.toLocaleString()} courses across ASU catalog`, d: 800, c: "dim" },
+      { t: `discovered ${TOTAL_VIDEOS.toLocaleString()} unique video content objects`, d: 1300, c: "dim" },
+      { t: "connecting to vector store ··· pgvector @ asu-prod-east", d: 1800, c: "dim" },
+      { t: "connection established", d: 2200, c: "gold" },
+    ];
+
+    for (let i = 0; i < batchesComplete && i < BATCHES_TOTAL; i++) {
+      logs.push({
+        t: `batch ${i + 1}/${BATCHES_TOTAL} ████████████████████ ${BATCH_CUM_ATOMS[i].toLocaleString()} atoms`,
+        d: 2700 + i * 400,
+        c: "done",
+      });
+    }
+
+    if (batchesComplete < BATCHES_TOTAL) {
+      const frac = rawBatchPos - batchesComplete;
+      const filled = Math.max(1, Math.round(frac * 20));
+      const empty = 20 - filled;
+      logs.push({
+        t: `batch ${batchesComplete + 1}/${BATCHES_TOTAL} ${"█".repeat(filled)}${"░".repeat(empty)} processing`,
+        d: 2700 + batchesComplete * 400,
+        c: "active",
+      });
+    }
+
+    const tail = 2700 + (Math.min(batchesComplete + 1, BATCHES_TOTAL)) * 400;
+    logs.push({
+      t: isDone
+        ? `${totalAtoms.toLocaleString()} atoms indexed — ingestion complete`
+        : `${totalAtoms.toLocaleString()} atoms indexed — awaiting next batch window`,
+      d: tail,
+      c: "gold",
+    });
+
+    setLogLines([]);
+    logs.forEach((log) => {
+      setTimeout(() => setLogLines((prev) => [...prev, log]), log.d);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -89,6 +204,10 @@ export default function Home() {
         @keyframes pulse-glow {
           0%, 100% { opacity: 1; box-shadow: 0 0 14px rgba(255,198,39,0.4); }
           50% { opacity: 0.7; box-shadow: 0 0 6px rgba(255,198,39,0.15); }
+        }
+        @keyframes pulse-green {
+          0%, 100% { opacity: 1; box-shadow: 0 0 14px rgba(34,214,138,0.5); }
+          50% { opacity: 0.7; box-shadow: 0 0 6px rgba(34,214,138,0.2); }
         }
         @keyframes blink {
           0%, 100% { opacity: 1; }
@@ -126,7 +245,7 @@ export default function Home() {
         position: "relative",
         overflow: "hidden",
       }}>
-        {/* Subtle radial glow */}
+        {/* Radial glows */}
         <div style={{
           position: "fixed",
           top: "-30%",
@@ -186,16 +305,16 @@ export default function Home() {
                 width: 7,
                 height: 7,
                 borderRadius: "50%",
-                background: "#FFC627",
-                animation: "pulse-glow 2s ease-in-out infinite",
+                background: isDone ? "#22D68A" : "#FFC627",
+                animation: isDone ? "pulse-green 2s ease-in-out infinite" : "pulse-glow 2s ease-in-out infinite",
               }} />
               <span style={{
                 fontFamily: "'JetBrains Mono', monospace",
                 fontSize: 10,
                 letterSpacing: 2,
-                color: "#FFC627",
+                color: isDone ? "#22D68A" : "#FFC627",
                 opacity: 0.9,
-              }}>INGESTING</span>
+              }}>{isDone ? "COMPLETE" : "INGESTING"}</span>
             </div>
           </div>
 
@@ -222,7 +341,7 @@ export default function Home() {
                 letterSpacing: -1,
                 lineHeight: 1,
               }}>
-                <AnimatedNumber target={PERCENT} suffix="%" duration={2000} />
+                <AnimatedNumber target={percent} suffix="%" duration={2000} />
               </span>
             </div>
 
@@ -269,7 +388,6 @@ export default function Home() {
                   overflow: "hidden",
                   zIndex: 2,
                 }}>
-                  {/* Animated stripes */}
                   <div style={{
                     position: "absolute",
                     inset: 0,
@@ -277,7 +395,6 @@ export default function Home() {
                     backgroundSize: "40px 40px",
                     animation: "stripe-march 1s linear infinite",
                   }} />
-                  {/* Leading edge glow */}
                   <div style={{
                     position: "absolute",
                     right: 0,
@@ -286,7 +403,6 @@ export default function Home() {
                     width: 80,
                     background: "linear-gradient(90deg, transparent, rgba(255,198,39,0.12))",
                   }} />
-                  {/* Shimmer */}
                   <div style={{
                     position: "absolute",
                     top: 0,
@@ -309,10 +425,10 @@ export default function Home() {
               color: "#4D4459",
             }}>
               <span>
-                <AnimatedNumber target={INGESTED_COURSES} /> of {TOTAL_COURSES.toLocaleString()} courses
+                <AnimatedNumber target={ingestedCourses} /> of {TOTAL_COURSES.toLocaleString()} courses
               </span>
-              <span>batch {BATCHES_COMPLETE} of {BATCHES_TOTAL}</span>
-              <span>ETA Mar 31 2026</span>
+              <span>batch {batchesComplete} of {BATCHES_TOTAL}</span>
+              <span>{isDone ? "Completed" : "ETA"} Mar 31 2026</span>
             </div>
           </div>
 
@@ -357,7 +473,7 @@ export default function Home() {
                 lineHeight: 1,
                 marginBottom: 12,
               }}>
-                <AnimatedNumber target={TOTAL_ATOMS} />
+                <AnimatedNumber target={totalAtoms} />
               </div>
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
@@ -378,7 +494,7 @@ export default function Home() {
                   padding: "3px 8px",
                   borderRadius: 4,
                   border: "1px solid rgba(255,198,39,0.12)",
-                }}>+{NEW_ATOMS.toLocaleString()} new</span>
+                }}>+{newAtoms.toLocaleString()} new</span>
               </div>
 
               <div style={{
@@ -426,7 +542,7 @@ export default function Home() {
                 lineHeight: 1,
                 marginBottom: 4,
               }}>
-                <AnimatedNumber target={PROCESSED_VIDEOS} />
+                <AnimatedNumber target={processedVideos} />
               </div>
 
               <div style={{
@@ -506,6 +622,7 @@ export default function Home() {
                 <span style={{
                   color: log.c === "done" ? "#C4A44A"
                     : log.c === "gold" ? "#FFC627"
+                    : log.c === "active" ? "#8C1D40"
                     : log.c === "pending" ? "#2D2535"
                     : "#5A5066",
                 }}>
@@ -521,8 +638,8 @@ export default function Home() {
           {/* Batch blocks */}
           <div style={{ display: "flex", gap: 4 }}>
             {[...Array(BATCHES_TOTAL)].map((_, i) => {
-              const isDone = i < BATCHES_COMPLETE;
-              const isNext = i === BATCHES_COMPLETE;
+              const done = i < batchesComplete;
+              const isNext = i === batchesComplete && !isDone;
               return (
                 <div
                   key={i}
@@ -536,17 +653,17 @@ export default function Home() {
                     fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 10,
                     fontWeight: 500,
-                    background: isDone
+                    background: done
                       ? "rgba(140,29,64,0.18)"
                       : isNext
                       ? "rgba(255,198,39,0.05)"
                       : "rgba(255,255,255,0.015)",
-                    color: isDone
+                    color: done
                       ? "#C4A44A"
                       : isNext
                       ? "#4D4459"
                       : "#1F1A28",
-                    border: isDone
+                    border: done
                       ? "1px solid rgba(140,29,64,0.3)"
                       : isNext
                       ? "1px dashed rgba(255,198,39,0.15)"
