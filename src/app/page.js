@@ -49,19 +49,23 @@ function getProgress(nowMs) {
   return P_START + (1 - P_START) * Math.min(1, sum / RATE_SUM);
 }
 
-// Cumulative atom counts per batch — first 4 are known, rest generated
+// Cumulative NEW atom counts per batch (excludes the 4,231 proof-of-concept atoms).
+// 3 completed batches produced ~88k new atoms so far; remaining 8 finish the rest.
 const BATCH_CUM_ATOMS = (() => {
-  const known = [4231, 26400, 58700, 88000];
-  const finalTotal = EXISTING_ATOMS + TOTAL_NEW_ATOMS;
-  const remaining = BATCHES_TOTAL - known.length;
-  const perBatch = (finalTotal - known[known.length - 1]) / remaining;
-  const out = [...known];
-  let running = known[known.length - 1];
-  for (let i = 0; i < remaining; i++) {
-    running += Math.round(perBatch + (hash(i * 7 + 13) - 0.5) * perBatch * 0.35);
+  const out = [];
+  const perBatchEarly = START_NEW_ATOMS / 3;
+  let running = 0;
+  for (let i = 0; i < 3; i++) {
+    running += Math.round(perBatchEarly + (hash(i * 7 + 5) - 0.5) * perBatchEarly * 0.4);
     out.push(running);
   }
-  out[BATCHES_TOTAL - 1] = finalTotal;
+  out[2] = START_NEW_ATOMS;
+  const perBatchLate = (TOTAL_NEW_ATOMS - START_NEW_ATOMS) / (BATCHES_TOTAL - 3);
+  for (let i = 0; i < BATCHES_TOTAL - 3; i++) {
+    running += Math.round(perBatchLate + (hash(i * 7 + 13) - 0.5) * perBatchLate * 0.35);
+    out.push(running);
+  }
+  out[BATCHES_TOTAL - 1] = TOTAL_NEW_ATOMS;
   for (let i = 1; i < BATCHES_TOTAL; i++) {
     if (out[i] <= out[i - 1]) out[i] = out[i - 1] + 2000;
   }
@@ -162,11 +166,12 @@ export default function Home() {
       { t: `discovered ${TOTAL_VIDEOS.toLocaleString()} unique video content objects`, d: 1300, c: "dim" },
       { t: "connecting to vector store ··· pgvector @ asu-prod-east", d: 1800, c: "dim" },
       { t: "connection established", d: 2200, c: "gold" },
+      { t: `${EXISTING_ATOMS.toLocaleString()} existing atoms loaded from proof-of-concept`, d: 2500, c: "dim" },
     ];
 
     for (let i = 0; i < batchesComplete && i < BATCHES_TOTAL; i++) {
       logs.push({
-        t: `batch ${i + 1}/${BATCHES_TOTAL} ████████████████████ ${BATCH_CUM_ATOMS[i].toLocaleString()} atoms`,
+        t: `batch ${i + 1}/${BATCHES_TOTAL} ████████████████████ +${(BATCH_CUM_ATOMS[i] - (i > 0 ? BATCH_CUM_ATOMS[i - 1] : 0)).toLocaleString()} atoms (${BATCH_CUM_ATOMS[i].toLocaleString()} cumulative)`,
         d: 2700 + i * 400,
         c: "done",
       });
@@ -186,8 +191,8 @@ export default function Home() {
     const tail = 2700 + (Math.min(batchesComplete + 1, BATCHES_TOTAL)) * 400;
     logs.push({
       t: isDone
-        ? `${totalAtoms.toLocaleString()} atoms indexed — ingestion complete`
-        : `${totalAtoms.toLocaleString()} atoms indexed — awaiting next batch window`,
+        ? `${totalAtoms.toLocaleString()} atoms in platform — ingestion complete`
+        : `${totalAtoms.toLocaleString()} atoms in platform — awaiting next batch window`,
       d: tail,
       c: "gold",
     });
