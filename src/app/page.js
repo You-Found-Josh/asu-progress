@@ -13,7 +13,7 @@ const START_COURSES = 1650;
 const START_VIDEOS = 17000;
 const START_NEW_ATOMS = 88000;
 
-const T_START = new Date(2026, 2, 24, 0, 0, 0).getTime();
+const T_START = new Date(2026, 2, 25, 0, 0, 0).getTime();
 const T_END = new Date(2026, 2, 31, 23, 59, 59).getTime();
 const P_START = 0.3;
 
