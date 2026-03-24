@@ -6,12 +6,12 @@ const TOTAL_COURSES = 5505;
 const TOTAL_VIDEOS = 56802;
 const BATCHES_TOTAL = 11;
 const EXISTING_ATOMS = 4231;
-const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 5.2);
+const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 6.2);
 
 // Pinned values at the 30 % starting point (Mar 24)
 const START_COURSES = 1650;
-const START_VIDEOS = 17000;
-const START_NEW_ATOMS = 88000;
+const START_VIDEOS = 20000;
+const START_NEW_ATOMS = 97030;
 
 const T_START = new Date(2026, 2, 25, 0, 0, 0).getTime();
 const T_END = new Date(2026, 2, 31, 23, 59, 59).getTime();
@@ -50,13 +50,14 @@ function getProgress(nowMs) {
 }
 
 // Cumulative NEW atom counts per batch (excludes the 4,231 proof-of-concept atoms).
-// 3 completed batches produced ~88k new atoms so far; remaining 8 finish the rest.
+// 3 completed batches of 5k videos each produced ~97k new atoms so far.
+// Batch 4 is in progress (2,380 files pending re-trigger after killed run).
 const BATCH_CUM_ATOMS = (() => {
   const out = [];
   const perBatchEarly = START_NEW_ATOMS / 3;
   let running = 0;
   for (let i = 0; i < 3; i++) {
-    running += Math.round(perBatchEarly + (hash(i * 7 + 5) - 0.5) * perBatchEarly * 0.4);
+    running += Math.round(perBatchEarly + (hash(i * 7 + 5) - 0.5) * perBatchEarly * 0.3);
     out.push(running);
   }
   out[2] = START_NEW_ATOMS;
@@ -160,42 +161,47 @@ export default function Home() {
   // Build terminal log once on mount
   useEffect(() => {
     if (!mounted) return;
+    let d = 0;
+    const line = (t, c = "dim", gap = 350) => { d += gap; return { t, d, c }; };
     const logs = [
-      { t: "atomic-ingest v2.4.1 — initializing pipeline", d: 300, c: "dim" },
-      { t: `scanning ${TOTAL_COURSES.toLocaleString()} courses across ASU catalog`, d: 800, c: "dim" },
-      { t: `discovered ${TOTAL_VIDEOS.toLocaleString()} unique video content objects`, d: 1300, c: "dim" },
-      { t: "connecting to vector store ··· pgvector @ asu-prod-east", d: 1800, c: "dim" },
-      { t: "connection established", d: 2200, c: "gold" },
-      { t: `${EXISTING_ATOMS.toLocaleString()} existing atoms loaded from proof-of-concept`, d: 2500, c: "dim" },
+      line("atomic-ingest v2.4.1 — initializing pipeline", "dim", 300),
+      line(`scanning ${TOTAL_COURSES.toLocaleString()} courses across ASU catalog`),
+      line(`discovered ${TOTAL_VIDEOS.toLocaleString()} unique video content objects`),
+      line("connecting to vector store ··· pgvector @ asu-prod-east"),
+      line("connection established", "gold"),
+      line(`${EXISTING_ATOMS.toLocaleString()} existing atoms loaded from proof-of-concept`),
+      line("[fix] json.loads() parser — replaced brittle string-slicing extractor"),
+      line("[fix] S3 StreamingBody retry — cached bytes before retry loop"),
+      line("[fix] no-audio guard — skip videos without audio tracks"),
+      line("error analysis: 70 failed jobs → 11 error types classified", "dim", 250),
+      line("fail rate: near-100% → 3–7% post-fix (content-dependent)", "gold", 250),
+      line("test: 5 batches (240–1,000 videos) — pipeline stable at 240 concurrent", "dim", 250),
     ];
 
     for (let i = 0; i < batchesComplete && i < BATCHES_TOTAL; i++) {
-      logs.push({
-        t: `batch ${i + 1}/${BATCHES_TOTAL} ████████████████████ +${(BATCH_CUM_ATOMS[i] - (i > 0 ? BATCH_CUM_ATOMS[i - 1] : 0)).toLocaleString()} atoms (${BATCH_CUM_ATOMS[i].toLocaleString()} cumulative)`,
-        d: 2700 + i * 400,
-        c: "done",
-      });
+      const batchYield = BATCH_CUM_ATOMS[i] - (i > 0 ? BATCH_CUM_ATOMS[i - 1] : 0);
+      logs.push(line(
+        `batch ${i + 1}/${BATCHES_TOTAL} ████████████████████ 5,000 videos → +${batchYield.toLocaleString()} atoms`,
+        "done", 300,
+      ));
     }
 
     if (batchesComplete < BATCHES_TOTAL) {
       const frac = rawBatchPos - batchesComplete;
       const filled = Math.max(1, Math.round(frac * 20));
       const empty = 20 - filled;
-      logs.push({
-        t: `batch ${batchesComplete + 1}/${BATCHES_TOTAL} ${"█".repeat(filled)}${"░".repeat(empty)} processing`,
-        d: 2700 + batchesComplete * 400,
-        c: "active",
-      });
+      logs.push(line(
+        `batch ${batchesComplete + 1}/${BATCHES_TOTAL} ${"█".repeat(filled)}${"░".repeat(empty)} 2,380 files re-triggering`,
+        "active", 300,
+      ));
     }
 
-    const tail = 2700 + (Math.min(batchesComplete + 1, BATCHES_TOTAL)) * 400;
-    logs.push({
-      t: isDone
+    logs.push(line(
+      isDone
         ? `${totalAtoms.toLocaleString()} atoms in platform — ingestion complete`
-        : `${totalAtoms.toLocaleString()} atoms in platform — awaiting next batch window`,
-      d: tail,
-      c: "gold",
-    });
+        : `${totalAtoms.toLocaleString()} atoms in platform (${newAtoms.toLocaleString()} new · avg 6.2/video)`,
+      "gold", 400,
+    ));
 
     setLogLines([]);
     logs.forEach((log) => {
@@ -601,7 +607,7 @@ export default function Home() {
                 color: "#3D3548",
                 fontStyle: "italic",
               }}>
-                ~5.2 atoms per video (avg yield)
+                ~6.2 atoms per video (avg yield)
               </div>
             </div>
           </div>
@@ -614,7 +620,7 @@ export default function Home() {
               border: "1px solid rgba(140,29,64,0.12)",
               borderRadius: 8,
               padding: "14px 16px",
-              maxHeight: 175,
+              maxHeight: 220,
               overflowY: "auto",
               marginBottom: 18,
               fontFamily: "'JetBrains Mono', monospace",
