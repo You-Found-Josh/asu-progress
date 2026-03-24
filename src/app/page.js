@@ -8,6 +8,11 @@ const BATCHES_TOTAL = 11;
 const EXISTING_ATOMS = 4231;
 const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 5.2);
 
+// Pinned values at the 30 % starting point (Mar 24)
+const START_COURSES = 1650;
+const START_VIDEOS = 17000;
+const START_NEW_ATOMS = 88000;
+
 const T_START = new Date(2026, 2, 24, 0, 0, 0).getTime();
 const T_END = new Date(2026, 2, 31, 23, 59, 59).getTime();
 const P_START = 0.3;
@@ -44,16 +49,19 @@ function getProgress(nowMs) {
   return P_START + (1 - P_START) * Math.min(1, sum / RATE_SUM);
 }
 
-// Pre-compute cumulative atom counts per batch (deterministic, slightly noisy)
+// Cumulative atom counts per batch — first 4 are known, rest generated
 const BATCH_CUM_ATOMS = (() => {
-  const perBatch = TOTAL_NEW_ATOMS / BATCHES_TOTAL;
-  const out = [];
-  let running = EXISTING_ATOMS;
-  for (let i = 0; i < BATCHES_TOTAL; i++) {
+  const known = [4231, 26400, 58700, 88000];
+  const finalTotal = EXISTING_ATOMS + TOTAL_NEW_ATOMS;
+  const remaining = BATCHES_TOTAL - known.length;
+  const perBatch = (finalTotal - known[known.length - 1]) / remaining;
+  const out = [...known];
+  let running = known[known.length - 1];
+  for (let i = 0; i < remaining; i++) {
     running += Math.round(perBatch + (hash(i * 7 + 13) - 0.5) * perBatch * 0.35);
     out.push(running);
   }
-  out[BATCHES_TOTAL - 1] = EXISTING_ATOMS + TOTAL_NEW_ATOMS;
+  out[BATCHES_TOTAL - 1] = finalTotal;
   for (let i = 1; i < BATCHES_TOTAL; i++) {
     if (out[i] <= out[i - 1]) out[i] = out[i - 1] + 2000;
   }
@@ -105,18 +113,19 @@ export default function Home() {
   const logRef = useRef(null);
   const barAnimDone = useRef(false);
 
-  // Derived stats
-  const percent = Math.round(progress * 100);
-  const ingestedCourses = Math.round(TOTAL_COURSES * progress);
-  const processedVideos = Math.round(TOTAL_VIDEOS * progress);
-  const totalAtoms = EXISTING_ATOMS + Math.round(TOTAL_NEW_ATOMS * progress);
-  const newAtoms = totalAtoms - EXISTING_ATOMS;
+  // Interpolation factor: 0 at 30 %, 1 at 100 %
+  const t = Math.max(0, progress - P_START) / (1 - P_START);
   const isDone = progress >= 1;
 
-  // Batches: at 30 % → 4 done, at 100 % → 11 done (linear interpolation)
-  const rawBatchPos = isDone
-    ? BATCHES_TOTAL
-    : 4 + 7 * Math.max(0, progress - P_START) / (1 - P_START);
+  // Derived stats — pinned to exact starting values at 30 %
+  const percent = Math.round(progress * 100);
+  const ingestedCourses = Math.round(START_COURSES + (TOTAL_COURSES - START_COURSES) * t);
+  const processedVideos = Math.round(START_VIDEOS + (TOTAL_VIDEOS - START_VIDEOS) * t);
+  const newAtoms = Math.round(START_NEW_ATOMS + (TOTAL_NEW_ATOMS - START_NEW_ATOMS) * t);
+  const totalAtoms = EXISTING_ATOMS + newAtoms;
+
+  // Batches: at 30 % → 3 done, currently IN batch 4; at 100 % → 11 done
+  const rawBatchPos = isDone ? BATCHES_TOTAL : 3 + 8 * t;
   const batchesComplete = isDone
     ? BATCHES_TOTAL
     : Math.min(BATCHES_TOTAL - 1, Math.floor(rawBatchPos));
@@ -427,7 +436,7 @@ export default function Home() {
               <span>
                 <AnimatedNumber target={ingestedCourses} /> of {TOTAL_COURSES.toLocaleString()} courses
               </span>
-              <span>batch {batchesComplete} of {BATCHES_TOTAL}</span>
+              <span>batch {isDone ? BATCHES_TOTAL : batchesComplete + 1} of {BATCHES_TOTAL}</span>
               <span>{isDone ? "Completed" : "ETA"} Mar 31 2026</span>
             </div>
           </div>
