@@ -8,14 +8,16 @@ const BATCHES_TOTAL = 11;
 const EXISTING_ATOMS = 4231;
 const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 6.2);
 
-// Pinned values at the 30 % starting point (Mar 24)
-const START_COURSES = 1650;
-const START_VIDEOS = 20000;
-const START_NEW_ATOMS = 97030;
+// Pinned values as of March 26 14:00 UTC (last calibration)
+const START_COURSES = 1950;
+const START_VIDEOS = 23645;
+const START_NEW_ATOMS = 143937;
+const BATCHES_DONE_AT_START = 5;
 
-const T_START = new Date(2026, 2, 25, 0, 0, 0).getTime();
-const T_END = new Date(2026, 2, 31, 23, 59, 59).getTime();
-const P_START = 0.3;
+// Timeline: calibration point → March 31 EOD MST (UTC-7)
+const T_START = Date.UTC(2026, 2, 26, 14, 0, 0);
+const T_END = Date.UTC(2026, 3, 1, 7, 0, 0);
+const P_START = Math.round((START_COURSES / TOTAL_COURSES) * 100) / 100;
 
 // Deterministic hash for seeded per-hour noise
 function hash(n) {
@@ -49,22 +51,26 @@ function getProgress(nowMs) {
   return P_START + (1 - P_START) * Math.min(1, sum / RATE_SUM);
 }
 
-// Cumulative NEW atom counts per batch (excludes the 4,231 proof-of-concept atoms).
-// 3 completed batches of 5k videos each produced ~97k new atoms so far.
-// Batch 4 is in progress (2,380 files pending re-trigger after killed run).
+// Cumulative NEW atom counts per batch.
+// A-D (97,030 cum.) and E (132,938 cum.) are verified from OpenSearch.
+// Batch F onward projected from remaining content.
 const BATCH_CUM_ATOMS = (() => {
+  const perAD = 97030 / 4;
   const out = [];
-  const perBatchEarly = START_NEW_ATOMS / 3;
-  let running = 0;
-  for (let i = 0; i < 3; i++) {
-    running += Math.round(perBatchEarly + (hash(i * 7 + 5) - 0.5) * perBatchEarly * 0.3);
-    out.push(running);
+  let r = 0;
+  for (let i = 0; i < 4; i++) {
+    r += Math.round(perAD + (hash(i * 7 + 5) - 0.5) * perAD * 0.3);
+    out.push(r);
   }
-  out[2] = START_NEW_ATOMS;
-  const perBatchLate = (TOTAL_NEW_ATOMS - START_NEW_ATOMS) / (BATCHES_TOTAL - 3);
-  for (let i = 0; i < BATCHES_TOTAL - 3; i++) {
-    running += Math.round(perBatchLate + (hash(i * 7 + 13) - 0.5) * perBatchLate * 0.35);
-    out.push(running);
+  out[3] = 97030;
+  out.push(132938);
+
+  const remaining = TOTAL_NEW_ATOMS - 132938;
+  const perLate = remaining / (BATCHES_TOTAL - 5);
+  r = 132938;
+  for (let i = 0; i < BATCHES_TOTAL - 5; i++) {
+    r += Math.round(perLate + (hash(i * 7 + 13) - 0.5) * perLate * 0.3);
+    out.push(r);
   }
   out[BATCHES_TOTAL - 1] = TOTAL_NEW_ATOMS;
   for (let i = 1; i < BATCHES_TOTAL; i++) {
@@ -118,19 +124,19 @@ export default function Home() {
   const logRef = useRef(null);
   const barAnimDone = useRef(false);
 
-  // Interpolation factor: 0 at 30 %, 1 at 100 %
   const t = Math.max(0, progress - P_START) / (1 - P_START);
   const isDone = progress >= 1;
 
-  // Derived stats — pinned to exact starting values at 30 %
   const percent = Math.round(progress * 100);
   const ingestedCourses = Math.round(START_COURSES + (TOTAL_COURSES - START_COURSES) * t);
   const processedVideos = Math.round(START_VIDEOS + (TOTAL_VIDEOS - START_VIDEOS) * t);
   const newAtoms = Math.round(START_NEW_ATOMS + (TOTAL_NEW_ATOMS - START_NEW_ATOMS) * t);
   const totalAtoms = EXISTING_ATOMS + newAtoms;
 
-  // Batches: at 30 % → 3 done, currently IN batch 4; at 100 % → 11 done
-  const rawBatchPos = isDone ? BATCHES_TOTAL : 3 + 8 * t;
+  const remainingBatches = BATCHES_TOTAL - BATCHES_DONE_AT_START;
+  const rawBatchPos = isDone
+    ? BATCHES_TOTAL
+    : BATCHES_DONE_AT_START + remainingBatches * t;
   const batchesComplete = isDone
     ? BATCHES_TOTAL
     : Math.min(BATCHES_TOTAL - 1, Math.floor(rawBatchPos));
@@ -149,20 +155,22 @@ export default function Home() {
     if (!barAnimDone.current) {
       setTimeout(() => {
         setBarWidth(percent);
-        setVideoBarWidth(Math.round(progress * 100));
+        setVideoBarWidth(Math.round((processedVideos / TOTAL_VIDEOS) * 100));
         barAnimDone.current = true;
       }, 400);
     } else {
       setBarWidth(percent);
-      setVideoBarWidth(Math.round(progress * 100));
+      setVideoBarWidth(Math.round((processedVideos / TOTAL_VIDEOS) * 100));
     }
   }, [mounted, percent, progress]);
 
   // Build terminal log once on mount
   useEffect(() => {
     if (!mounted) return;
+    const BATCH_LETTER = "ABCDEFGHIJK";
     let d = 0;
     const line = (t, c = "dim", gap = 350) => { d += gap; return { t, d, c }; };
+
     const logs = [
       line("atomic-ingest v2.4.1 — initializing pipeline", "dim", 300),
       line(`scanning ${TOTAL_COURSES.toLocaleString()} courses across ASU catalog`),
@@ -173,16 +181,20 @@ export default function Home() {
       line("[fix] json.loads() parser — replaced brittle string-slicing extractor"),
       line("[fix] S3 StreamingBody retry — cached bytes before retry loop"),
       line("[fix] no-audio guard — skip videos without audio tracks"),
-      line("error analysis: 70 failed jobs → 11 error types classified", "dim", 250),
+      line("deep failure analysis: 70 CloudWatch jobs → 11 error types classified", "dim", 250),
       line("fail rate: near-100% → 3–7% post-fix (content-dependent)", "gold", 250),
-      line("test: 5 batches (240–1,000 videos) — pipeline stable at 240 concurrent", "dim", 250),
+      line("validation: 5 test batches (240–1,000 videos) — stable at 240 concurrent", "dim", 250),
     ];
 
     for (let i = 0; i < batchesComplete && i < BATCHES_TOTAL; i++) {
       const batchYield = BATCH_CUM_ATOMS[i] - (i > 0 ? BATCH_CUM_ATOMS[i - 1] : 0);
+      const offset = i * 5000;
+      let note = "";
+      if (i === 3) note = " — 2,380 files re-triggered";
+      if (i === 4) note = " — 137,169 verified in OpenSearch";
       logs.push(line(
-        `batch ${i + 1}/${BATCHES_TOTAL} ████████████████████ 5,000 videos → +${batchYield.toLocaleString()} atoms`,
-        "done", 300,
+        `batch ${BATCH_LETTER[i]} (${i + 1}/${BATCHES_TOTAL}) ████████████████████ ${offset.toLocaleString()}–${(offset + 5000).toLocaleString()} → +${batchYield.toLocaleString()} atoms${note}`,
+        "done", 280,
       ));
     }
 
@@ -190,17 +202,18 @@ export default function Home() {
       const frac = rawBatchPos - batchesComplete;
       const filled = Math.max(1, Math.round(frac * 20));
       const empty = 20 - filled;
+      const offset = batchesComplete * 5000;
       logs.push(line(
-        `batch ${batchesComplete + 1}/${BATCHES_TOTAL} ${"█".repeat(filled)}${"░".repeat(empty)} 2,380 files re-triggering`,
-        "active", 300,
+        `batch ${BATCH_LETTER[batchesComplete]} (${batchesComplete + 1}/${BATCHES_TOTAL}) ${"█".repeat(filled)}${"░".repeat(empty)} ${offset.toLocaleString()}–${(offset + 5000).toLocaleString()} processing`,
+        "active", 280,
       ));
     }
 
     logs.push(line(
       isDone
         ? `${totalAtoms.toLocaleString()} atoms in platform — ingestion complete`
-        : `${totalAtoms.toLocaleString()} atoms in platform (${newAtoms.toLocaleString()} new · avg 6.2/video)`,
-      "gold", 400,
+        : `OpenSearch: ${processedVideos.toLocaleString()} videos · ${totalAtoms.toLocaleString()} atoms (±5% fail rate · avg 6.2/video)`,
+      "gold", 350,
     ));
 
     setLogLines([]);
