@@ -9,7 +9,8 @@ const EXISTING_ATOMS = 4231;
 const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 6.2);
 
 // Pinned values as of March 26 14:00 UTC (last calibration)
-const START_COURSES = 1950;
+// 23,645/56,802 videos = 41.6%, 143,937/352k atoms = 40.9%, 5/11 batches = 45%
+const START_COURSES = 2300;
 const START_VIDEOS = 23645;
 const START_NEW_ATOMS = 143937;
 const BATCHES_DONE_AT_START = 5;
@@ -17,7 +18,7 @@ const BATCHES_DONE_AT_START = 5;
 // Timeline: calibration point → March 31 EOD MST (UTC-7)
 const T_START = Date.UTC(2026, 2, 26, 14, 0, 0);
 const T_END = Date.UTC(2026, 3, 1, 7, 0, 0);
-const P_START = Math.round((START_COURSES / TOTAL_COURSES) * 100) / 100;
+const P_START = 0.42;
 
 // Deterministic hash for seeded per-hour noise
 function hash(n) {
