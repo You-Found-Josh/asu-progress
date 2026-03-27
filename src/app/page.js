@@ -8,17 +8,18 @@ const BATCHES_TOTAL = 11;
 const EXISTING_ATOMS = 4231;
 const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 6.2);
 
-// Pinned values as of March 26 14:00 UTC (last calibration)
-// 23,645/56,802 videos = 41.6%, 143,937/352k atoms = 40.9%, 5/11 batches = 45%
-const START_COURSES = 2300;
-const START_VIDEOS = 23645;
+// Pinned values — batch F complete (last calibration)
+// 27,023/56,802 videos = 47.6%, 6/11 batches = 54.5%
+// Atom count pending exact verification from OpenSearch
+const START_COURSES = 2650;
+const START_VIDEOS = 27023;
 const START_NEW_ATOMS = 143937;
-const BATCHES_DONE_AT_START = 5;
+const BATCHES_DONE_AT_START = 6;
 
-// Timeline: calibration point → March 31 EOD MST (UTC-7)
-const T_START = Date.UTC(2026, 2, 26, 14, 0, 0);
-const T_END = Date.UTC(2026, 3, 1, 7, 0, 0);
-const P_START = 0.42;
+// Timeline: calibration point → April 2 EOD MST (UTC-7)
+const T_START = Date.UTC(2026, 2, 27, 0, 0, 0);
+const T_END = Date.UTC(2026, 3, 3, 7, 0, 0);
+const P_START = 0.48;
 
 // Deterministic hash for seeded per-hour noise
 function hash(n) {
@@ -193,6 +194,7 @@ export default function Home() {
       let note = "";
       if (i === 3) note = " — 2,380 files re-triggered";
       if (i === 4) note = " — 137,169 verified in OpenSearch";
+      if (i === 5) note = " — 4,378 succeeded, 619 failed (logging failures for post-deadline re-run)";
       logs.push(line(
         `batch ${BATCH_LETTER[i]} (${i + 1}/${BATCHES_TOTAL}) ████████████████████ ${offset.toLocaleString()}–${(offset + 5000).toLocaleString()} → +${batchYield.toLocaleString()} atoms${note}`,
         "done", 280,
@@ -462,7 +464,7 @@ export default function Home() {
                 <AnimatedNumber target={ingestedCourses} /> of {TOTAL_COURSES.toLocaleString()} courses
               </span>
               <span>batch {isDone ? BATCHES_TOTAL : batchesComplete + 1} of {BATCHES_TOTAL}</span>
-              <span>{isDone ? "Completed" : "ETA"} Mar 31 2026</span>
+              <span>{isDone ? "Completed" : "ETA"} Apr 2 2026</span>
             </div>
           </div>
 
