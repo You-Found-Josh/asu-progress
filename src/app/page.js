@@ -3,23 +3,30 @@
 import { useEffect, useState, useRef } from "react";
 
 const TOTAL_COURSES = 5505;
-const TOTAL_VIDEOS = 56802;
+const TOTAL_VIDEOS = 55653;
 const BATCHES_TOTAL = 11;
 const EXISTING_ATOMS = 4231;
 const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 6.2);
 
-// Pinned values — batch F complete (last calibration)
-// 27,023/56,802 videos = 47.6%, 6/11 batches = 54.5%
-// Atom count pending exact verification from OpenSearch
-const START_COURSES = 2650;
-const START_VIDEOS = 27023;
-const START_NEW_ATOMS = 143937;
-const BATCHES_DONE_AT_START = 6;
+// Pinned values — Mar 29 (last ~10k batch in flight; prior ~10k batch ~533 failures)
+// Mar 27: 191,039 atoms total · 31,029 OpenSearch · 31,530 S3 markers · parallel 35k–45k
+// Mar 28 report: ~53% after G · 178,180 atoms (OS) · 20,653 left H–K (see screenshot)
+const START_VIDEOS = 45653;
+const START_NEW_ATOMS = 191039 - EXISTING_ATOMS;
+const BATCHES_DONE_AT_START = 10;
+const P_START = START_VIDEOS / TOTAL_VIDEOS;
+const START_COURSES = Math.round(TOTAL_COURSES * P_START);
 
-// Timeline: calibration point → April 2 EOD MST (UTC-7)
-const T_START = Date.UTC(2026, 2, 27, 0, 0, 0);
+// Timeline: Mar 29 → April 2 EOD MST (UTC-7)
+const T_START = Date.UTC(2026, 2, 29, 14, 0, 0);
 const T_END = Date.UTC(2026, 3, 3, 7, 0, 0);
-const P_START = 0.48;
+
+// Display labels for batch video ranges (catalog is 55,653 per metadata_merged.json)
+const BATCH_RANGE = [
+  "0–5k", "5k–10k", "10k–15k", "15k–20k", "20k–25k",
+  "25k–30k", "30k–40k", "35k–45k (parallel)", "40k–50k", "50k–55k",
+  `final ~10k → ${TOTAL_VIDEOS.toLocaleString()}`,
+];
 
 // Deterministic hash for seeded per-hour noise
 function hash(n) {
@@ -186,18 +193,22 @@ export default function Home() {
       line("deep failure analysis: 70 CloudWatch jobs → 11 error types classified", "dim", 250),
       line("fail rate: near-100% → 3–7% post-fix (content-dependent)", "gold", 250),
       line("validation: 5 test batches (240–1,000 videos) — stable at 240 concurrent", "dim", 250),
+      line("Mar 27: parallel 35k–45k · OpenSearch 31,029 · 191,039 atoms · S3 dedup 31,530", "dim", 250),
+      line("Mar 28: ~53% after batch G · 178,180 atoms (OS) · 20,653 remaining H–K · batch G still running", "dim", 250),
+      line("Mar 29: prior ~10k batch done (~533 fail) · final ~10k batch in flight", "gold", 280),
     ];
 
     for (let i = 0; i < batchesComplete && i < BATCHES_TOTAL; i++) {
       const batchYield = BATCH_CUM_ATOMS[i] - (i > 0 ? BATCH_CUM_ATOMS[i - 1] : 0);
-      const offset = i * 5000;
+      const range = BATCH_RANGE[i];
       let note = "";
       if (i === 3) note = " — 2,380 files re-triggered";
       if (i === 4) note = " — 137,169 verified in OpenSearch";
-      if (i === 5) note = " — 4,378 succeeded, 619 failed (logging failures for post-deadline re-run)";
+      if (i === 5) note = " — 4,378 ok, 619 fail (re-run after main)";
+      if (i === 9) note = " — ~533 fail / ~10k (failures logged for re-atomize)";
       logs.push(line(
-        `batch ${BATCH_LETTER[i]} (${i + 1}/${BATCHES_TOTAL}) ████████████████████ ${offset.toLocaleString()}–${(offset + 5000).toLocaleString()} → +${batchYield.toLocaleString()} atoms${note}`,
-        "done", 280,
+        `batch ${BATCH_LETTER[i]} (${i + 1}/${BATCHES_TOTAL}) ████████████████████ ${range} → +${batchYield.toLocaleString()} atoms${note}`,
+        "done", 260,
       ));
     }
 
@@ -205,17 +216,17 @@ export default function Home() {
       const frac = rawBatchPos - batchesComplete;
       const filled = Math.max(1, Math.round(frac * 20));
       const empty = 20 - filled;
-      const offset = batchesComplete * 5000;
+      const range = BATCH_RANGE[batchesComplete];
       logs.push(line(
-        `batch ${BATCH_LETTER[batchesComplete]} (${batchesComplete + 1}/${BATCHES_TOTAL}) ${"█".repeat(filled)}${"░".repeat(empty)} ${offset.toLocaleString()}–${(offset + 5000).toLocaleString()} processing`,
-        "active", 280,
+        `batch ${BATCH_LETTER[batchesComplete]} (${batchesComplete + 1}/${BATCHES_TOTAL}) ${"█".repeat(filled)}${"░".repeat(empty)} ${range} processing`,
+        "active", 260,
       ));
     }
 
     logs.push(line(
       isDone
         ? `${totalAtoms.toLocaleString()} atoms in platform — ingestion complete`
-        : `OpenSearch: ${processedVideos.toLocaleString()} videos · ${totalAtoms.toLocaleString()} atoms (±5% fail rate · avg 6.2/video)`,
+        : `OpenSearch / S3 cross-check · ${processedVideos.toLocaleString()} videos · ${totalAtoms.toLocaleString()} atoms · failures queued for post-main re-run`,
       "gold", 350,
     ));
 
@@ -636,7 +647,7 @@ export default function Home() {
               border: "1px solid rgba(140,29,64,0.12)",
               borderRadius: 8,
               padding: "14px 16px",
-              maxHeight: 220,
+              maxHeight: 280,
               overflowY: "auto",
               marginBottom: 18,
               fontFamily: "'JetBrains Mono', monospace",
