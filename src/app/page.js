@@ -8,9 +8,21 @@ const BATCHES_TOTAL = 11;
 const EXISTING_ATOMS = 4231;
 const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 6.2);
 
-// Pinned values — Mar 29 (last ~10k batch in flight; prior ~10k batch ~533 failures)
-// Mar 27: 191,039 atoms total · 31,029 OpenSearch · 31,530 S3 markers · parallel 35k–45k
-// Mar 28 report: ~53% after G · 178,180 atoms (OS) · 20,653 left H–K (see screenshot)
+/** Main catalog atomization wave finished — dashboard pins final OpenSearch numbers. */
+const MAIN_RUN_COMPLETE = true;
+
+const FINAL_VIDEOS_OS = 45984;
+const FINAL_ATOMS_TOTAL = 280995;
+const FINAL_NEW_ATOMS = FINAL_ATOMS_TOTAL - EXISTING_ATOMS;
+const FINAL_SIBLING_DOCS = 172151;
+const FINAL_VIDEOS_WITH_SIBLINGS = 42477;
+const FINAL_S3_DEDUP = 46537;
+const FINAL_RETRY_QUEUE = 9281;
+const FINAL_COMPLETION_RATE = 0.826;
+const FINAL_COURSES = Math.round(TOTAL_COURSES * FINAL_COMPLETION_RATE);
+const ATOMS_PER_VIDEO = (FINAL_NEW_ATOMS / FINAL_VIDEOS_OS).toFixed(1);
+
+// Live mode calibration (unused when MAIN_RUN_COMPLETE)
 const START_VIDEOS = 45653;
 const START_NEW_ATOMS = 191039 - EXISTING_ATOMS;
 const BATCHES_DONE_AT_START = 10;
@@ -74,14 +86,14 @@ const BATCH_CUM_ATOMS = (() => {
   out[3] = 97030;
   out.push(132938);
 
-  const remaining = TOTAL_NEW_ATOMS - 132938;
+  const remaining = FINAL_NEW_ATOMS - 132938;
   const perLate = remaining / (BATCHES_TOTAL - 5);
   r = 132938;
   for (let i = 0; i < BATCHES_TOTAL - 5; i++) {
     r += Math.round(perLate + (hash(i * 7 + 13) - 0.5) * perLate * 0.3);
     out.push(r);
   }
-  out[BATCHES_TOTAL - 1] = TOTAL_NEW_ATOMS;
+  out[BATCHES_TOTAL - 1] = FINAL_NEW_ATOMS;
   for (let i = 1; i < BATCHES_TOTAL; i++) {
     if (out[i] <= out[i - 1]) out[i] = out[i - 1] + 2000;
   }
@@ -125,7 +137,7 @@ function AnimatedNumber({ target, duration = 2200, prefix = "", suffix = "" }) {
 }
 
 export default function Home() {
-  const [progress, setProgress] = useState(P_START);
+  const [progress, setProgress] = useState(MAIN_RUN_COMPLETE ? FINAL_COMPLETION_RATE : P_START);
   const [barWidth, setBarWidth] = useState(0);
   const [videoBarWidth, setVideoBarWidth] = useState(0);
   const [logLines, setLogLines] = useState([]);
@@ -133,13 +145,21 @@ export default function Home() {
   const logRef = useRef(null);
   const barAnimDone = useRef(false);
 
-  const t = Math.max(0, progress - P_START) / (1 - P_START);
-  const isDone = progress >= 1;
+  const t = MAIN_RUN_COMPLETE
+    ? 1
+    : Math.max(0, progress - P_START) / (1 - P_START);
+  const isDone = MAIN_RUN_COMPLETE || progress >= 1;
 
-  const percent = Math.round(progress * 100);
-  const ingestedCourses = Math.round(START_COURSES + (TOTAL_COURSES - START_COURSES) * t);
-  const processedVideos = Math.round(START_VIDEOS + (TOTAL_VIDEOS - START_VIDEOS) * t);
-  const newAtoms = Math.round(START_NEW_ATOMS + (TOTAL_NEW_ATOMS - START_NEW_ATOMS) * t);
+  const percent = Math.round((MAIN_RUN_COMPLETE ? FINAL_COMPLETION_RATE : progress) * 100);
+  const ingestedCourses = MAIN_RUN_COMPLETE
+    ? FINAL_COURSES
+    : Math.round(START_COURSES + (TOTAL_COURSES - START_COURSES) * t);
+  const processedVideos = MAIN_RUN_COMPLETE
+    ? FINAL_VIDEOS_OS
+    : Math.round(START_VIDEOS + (TOTAL_VIDEOS - START_VIDEOS) * t);
+  const newAtoms = MAIN_RUN_COMPLETE
+    ? FINAL_NEW_ATOMS
+    : Math.round(START_NEW_ATOMS + (TOTAL_NEW_ATOMS - START_NEW_ATOMS) * t);
   const totalAtoms = EXISTING_ATOMS + newAtoms;
 
   const remainingBatches = BATCHES_TOTAL - BATCHES_DONE_AT_START;
@@ -152,6 +172,11 @@ export default function Home() {
 
   // Initialise and tick progress
   useEffect(() => {
+    if (MAIN_RUN_COMPLETE) {
+      setProgress(FINAL_COMPLETION_RATE);
+      setMounted(true);
+      return;
+    }
     setProgress(getProgress(Date.now()));
     setMounted(true);
     const iv = setInterval(() => setProgress(getProgress(Date.now())), 30000);
@@ -195,7 +220,17 @@ export default function Home() {
       line("validation: 5 test batches (240–1,000 videos) — stable at 240 concurrent", "dim", 250),
       line("Mar 27: parallel 35k–45k · OpenSearch 31,029 · 191,039 atoms · S3 dedup 31,530", "dim", 250),
       line("Mar 28: ~53% after batch G · 178,180 atoms (OS) · 20,653 remaining H–K · batch G still running", "dim", 250),
-      line("Mar 29: prior ~10k batch done (~533 fail) · final ~10k batch in flight", "gold", 280),
+      ...(MAIN_RUN_COMPLETE
+        ? [
+            line("Mar 29–30: final batches landed — main atomization wave complete", "gold", 280),
+            line(`OpenSearch ${FINAL_VIDEOS_OS.toLocaleString()} unique videos · ${FINAL_ATOMS_TOTAL.toLocaleString()} atoms`, "gold", 300),
+            line(`S3 dedup ${FINAL_S3_DEDUP.toLocaleString()} (~550 vs OS — usual naming mismatch)`, "dim", 250),
+            line(`Sibling docs ${FINAL_SIBLING_DOCS.toLocaleString()} · ${FINAL_VIDEOS_WITH_SIBLINGS.toLocaleString()} videos with siblings`, "dim", 250),
+            line(`~${FINAL_RETRY_QUEUE.toLocaleString()} need fix & re-trigger — atomizer scripts under repair`, "dim", 280),
+          ]
+        : [
+            line("Mar 29: prior ~10k batch done (~533 fail) · final ~10k batch in flight", "gold", 280),
+          ]),
     ];
 
     for (let i = 0; i < batchesComplete && i < BATCHES_TOTAL; i++) {
@@ -225,7 +260,7 @@ export default function Home() {
 
     logs.push(line(
       isDone
-        ? `${totalAtoms.toLocaleString()} atoms in platform — ingestion complete`
+        ? `${totalAtoms.toLocaleString()} atoms in platform — main run complete · ~${FINAL_RETRY_QUEUE.toLocaleString()} queued for re-atomize`
         : `OpenSearch / S3 cross-check · ${processedVideos.toLocaleString()} videos · ${totalAtoms.toLocaleString()} atoms · failures queued for post-main re-run`,
       "gold", 350,
     ));
@@ -475,7 +510,7 @@ export default function Home() {
                 <AnimatedNumber target={ingestedCourses} /> of {TOTAL_COURSES.toLocaleString()} courses
               </span>
               <span>batch {isDone ? BATCHES_TOTAL : batchesComplete + 1} of {BATCHES_TOTAL}</span>
-              <span>{isDone ? "Completed" : "ETA"} Apr 2 2026</span>
+              <span>{isDone ? "Main run complete" : "ETA Apr 2 2026"}</span>
             </div>
           </div>
 
@@ -634,10 +669,34 @@ export default function Home() {
                 color: "#3D3548",
                 fontStyle: "italic",
               }}>
-                ~6.2 atoms per video (avg yield)
+                ~{ATOMS_PER_VIDEO} new atoms / unique video (OpenSearch)
               </div>
             </div>
           </div>
+
+          {/* Sibling & dedup summary (post–main-run) */}
+          {MAIN_RUN_COMPLETE && (
+            <div style={{
+              background: "rgba(255,198,39,0.04)",
+              border: "1px solid rgba(255,198,39,0.12)",
+              borderRadius: 10,
+              padding: "14px 16px",
+              marginBottom: 20,
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 10,
+              color: "#8a8298",
+              lineHeight: 1.85,
+            }}>
+              <div style={{ color: "#FFC627", fontWeight: 600, marginBottom: 8, letterSpacing: 1, fontSize: 9 }}>
+                POST-RUN METRICS
+              </div>
+              Sibling docs {FINAL_SIBLING_DOCS.toLocaleString()} · Videos with siblings {FINAL_VIDEOS_WITH_SIBLINGS.toLocaleString()}
+              <br />
+              S3 dedup markers {FINAL_S3_DEDUP.toLocaleString()} · OpenSearch gap ~550 (naming mismatch)
+              <br />
+              Catalog completion ~{(FINAL_COMPLETION_RATE * 100).toFixed(1)}% · ~{FINAL_RETRY_QUEUE.toLocaleString()} flagged for fix and re-atomize
+            </div>
+          )}
 
           {/* Terminal */}
           <div
@@ -647,7 +706,7 @@ export default function Home() {
               border: "1px solid rgba(140,29,64,0.12)",
               borderRadius: 8,
               padding: "14px 16px",
-              maxHeight: 280,
+              maxHeight: 320,
               overflowY: "auto",
               marginBottom: 18,
               fontFamily: "'JetBrains Mono', monospace",
