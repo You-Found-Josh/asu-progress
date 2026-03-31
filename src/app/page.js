@@ -22,6 +22,10 @@ const FINAL_COMPLETION_RATE = 0.826;
 const FINAL_COURSES = Math.round(TOTAL_COURSES * FINAL_COMPLETION_RATE);
 const ATOMS_PER_VIDEO = (FINAL_NEW_ATOMS / FINAL_VIDEOS_OS).toFixed(1);
 
+/** Client-facing: atoms live in ASU production (Thursday as buffer vs prior day). */
+const PROD_RELEASE_ETA_LONG = "Thursday, April 2, 2026";
+const PROD_RELEASE_ETA_SHORT = "Thu Apr 2, 2026";
+
 // Live mode calibration (unused when MAIN_RUN_COMPLETE)
 const START_VIDEOS = 45653;
 const START_NEW_ATOMS = 191039 - EXISTING_ATOMS;
@@ -227,6 +231,7 @@ export default function Home() {
             line(`S3 dedup ${FINAL_S3_DEDUP.toLocaleString()} (~550 vs OS — usual naming mismatch)`, "dim", 250),
             line(`Sibling docs ${FINAL_SIBLING_DOCS.toLocaleString()} · ${FINAL_VIDEOS_WITH_SIBLINGS.toLocaleString()} videos with siblings`, "dim", 250),
             line(`~${FINAL_RETRY_QUEUE.toLocaleString()} need fix & re-trigger — atomizer scripts under repair`, "dim", 280),
+            line(`Production deployment target ${PROD_RELEASE_ETA_SHORT} — ASU notified when live`, "gold", 250),
           ]
         : [
             line("Mar 29: prior ~10k batch done (~533 fail) · final ~10k batch in flight", "gold", 280),
@@ -400,6 +405,37 @@ export default function Home() {
             </div>
           </div>
 
+          {MAIN_RUN_COMPLETE && (
+            <div style={{
+              marginBottom: 22,
+              padding: "14px 16px",
+              borderRadius: 8,
+              background: "rgba(140,29,64,0.06)",
+              border: "1px solid rgba(140,29,64,0.22)",
+            }}>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 9,
+                letterSpacing: 2,
+                color: "#C4A44A",
+                marginBottom: 10,
+                fontWeight: 600,
+              }}>
+                PRODUCTION ROLLOUT
+              </div>
+              <p style={{
+                fontSize: 13,
+                lineHeight: 1.65,
+                color: "#c4bcc8",
+                margin: 0,
+              }}>
+                Ingestion is complete. Engineering is finishing the last release-readiness steps before atoms go live in production. We are on track for{' '}
+                <span style={{ color: "#FFC627", fontWeight: 500 }}>{PROD_RELEASE_ETA_LONG}</span>
+                {' '}(Thursday as a buffer). ASU will be notified as soon as production is live.
+              </p>
+            </div>
+          )}
+
           {/* Main progress bar */}
           <div style={{ marginBottom: 12 }}>
             <div style={{
@@ -510,7 +546,7 @@ export default function Home() {
                 <AnimatedNumber target={ingestedCourses} /> of {TOTAL_COURSES.toLocaleString()} courses
               </span>
               <span>batch {isDone ? BATCHES_TOTAL : batchesComplete + 1} of {BATCHES_TOTAL}</span>
-              <span>{isDone ? "Main run complete" : "ETA Apr 2 2026"}</span>
+              <span>{isDone ? `Prod ETA ${PROD_RELEASE_ETA_SHORT}` : `ETA ${PROD_RELEASE_ETA_SHORT}`}</span>
             </div>
           </div>
 
@@ -695,6 +731,8 @@ export default function Home() {
               S3 dedup markers {FINAL_S3_DEDUP.toLocaleString()} · OpenSearch gap ~550 (naming mismatch)
               <br />
               Catalog completion ~{(FINAL_COMPLETION_RATE * 100).toFixed(1)}% · ~{FINAL_RETRY_QUEUE.toLocaleString()} flagged for fix and re-atomize
+              <br />
+              Production go-live target {PROD_RELEASE_ETA_SHORT} · ASU notified when atoms are live
             </div>
           )}
 
