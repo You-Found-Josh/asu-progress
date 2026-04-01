@@ -26,6 +26,84 @@ const ATOMS_PER_VIDEO = (FINAL_NEW_ATOMS / FINAL_VIDEOS_OS).toFixed(1);
 const PROD_RELEASE_ETA_LONG = "Thursday, April 2, 2026";
 const PROD_RELEASE_ETA_SHORT = "Thu Apr 2, 2026";
 
+/** Ranked atom counts by inferred topic / discipline (OpenSearch-derived). */
+const ATOMS_BY_TOPIC = [
+  ["Programming", "Computer Science", 16164],
+  ["Electromagnetism", "Physics", 10330],
+  ["Calculus", "Mathematics", 7123],
+  ["Organic Chemistry", "Chemistry", 7046],
+  ["Genetics", "Biology", 6442],
+  ["Data Analysis", "Statistics", 4647],
+  ["Circuit Analysis", "Electrical Engineering", 4623],
+  ["Ethics", "Philosophy", 4224],
+  ["Human Anatomy", "Biology", 4040],
+  ["Climate Change", "Environmental Science", 3507],
+  ["Sociology", "Social Sciences", 3439],
+  ["Criminal Law", "Law", 3345],
+  ["Phonetics", "Linguistics", 3210],
+  ["Social Psychology", "Psychology", 3021],
+  ["Christianity", "Religion", 2781],
+  ["Marketing", "Business", 2734],
+  ["Microeconomics", "Economics", 2654],
+  ["Semiconductor Devices", "Electronics", 2544],
+  ["Control Systems", "Engineering", 2255],
+  ["Higher Education", "Education", 2227],
+  ["Ancient Civilizations", "History", 2191],
+  ["Gender Studies", "Sociology", 2163],
+  ["3D Modeling", "Computer Graphics", 2087],
+  ["Supply Chain Management", "Business", 1972],
+  ["Garment Construction", "Fashion Design", 1893],
+  ["International Relations", "Political Science", 1744],
+  ["Nutrition", "Health", 1713],
+  ["Investment", "Finance", 1701],
+  ["Renewable Energy", "Energy", 1583],
+  ["Building Design", "Architecture", 1558],
+  ["Television", "Media Studies", 1526],
+  ["Neurology", "Medicine", 1513],
+  ["North America", "Geography", 1353],
+  ["Financial Accounting", "Accounting", 1240],
+  ["Photography", "Art", 1205],
+  ["Human Evolution", "Anthropology", 1190],
+  ["Artificial Intelligence", "Technology", 1166],
+  ["Pattern Making", "Fashion Design", 1118],
+  ["Mechanical Engineering", "Engineering", 1003],
+  ["Pharmacology", "Medicine", 989],
+  ["Graphic Design", "Design", 985],
+  ["Patient Care", "Healthcare", 975],
+  ["Machine Learning", "Data Science", 956],
+  ["Qualitative Research", "Research Methods", 951],
+  ["Digital Marketing", "Marketing", 937],
+  ["Grammar", "Linguistics", 908],
+  ["Metabolic Pathways", "Biochemistry", 788],
+  ["Brain Function", "Neuroscience", 725],
+  ["Consumer Behavior", "Marketing", 721],
+  ["Academic Writing", "Writing", 596],
+  ["Agile Methodologies", "Project Management", 577],
+  ["Cybersecurity", "Information Technology", 577],
+  ["Skeletal System", "Anatomy", 574],
+  ["Recruitment", "Human Resources", 546],
+  ["Shakespeare", "Literature", 530],
+  ["Epidemiology", "Public Health", 505],
+  ["Mobile Networks", "Telecommunications", 482],
+  ["Crop Production", "Agriculture", 477],
+  ["Baseball", "Sports", 476],
+  ["Exercise", "Health & Fitness", 458],
+  ["Propositional Logic", "Logic", 453],
+  ["Solar Energy", "Renewable Energy", 443],
+  ["Volcanology", "Geology", 410],
+  ["Planetary Science", "Astronomy", 404],
+  ["Film Analysis", "Film Studies", 393],
+  ["Fossil Fuels", "Energy", 381],
+  ["Genetic Engineering", "Biotechnology", 350],
+  ["Zoning", "Urban Planning", 345],
+  ["Leadership Theories", "Leadership Studies", 357],
+  ["Crime Scene Investigation", "Forensic Science", 281],
+  ["Perception", "Cognitive Science", 280],
+  ["Inventory Management", "Operations Management", 273],
+  ["Team Dynamics", "Organizational Behavior", 267],
+  ["Theater", "Performing Arts", 265],
+];
+
 // Live mode calibration (unused when MAIN_RUN_COMPLETE)
 const START_VIDEOS = 45653;
 const START_NEW_ATOMS = 191039 - EXISTING_ATOMS;
@@ -733,6 +811,71 @@ export default function Home() {
               Catalog completion ~{(FINAL_COMPLETION_RATE * 100).toFixed(1)}% · ~{FINAL_RETRY_QUEUE.toLocaleString()} flagged for fix and re-atomize
               <br />
               Production go-live target {PROD_RELEASE_ETA_SHORT} · ASU notified when atoms are live
+            </div>
+          )}
+
+          {/* Atoms by topic (ranked) */}
+          {MAIN_RUN_COMPLETE && (
+            <div style={{
+              marginBottom: 20,
+              background: "rgba(140,29,64,0.04)",
+              border: "1px solid rgba(140,29,64,0.14)",
+              borderRadius: 10,
+              padding: "16px 16px 12px",
+            }}>
+              <div style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                marginBottom: 14,
+                paddingBottom: 10,
+                borderBottom: "1px solid rgba(140,29,64,0.15)",
+              }}>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 9,
+                  letterSpacing: 2,
+                  color: "#C4A44A",
+                  fontWeight: 600,
+                }}>
+                  ATOMS BY TOPIC
+                </span>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 9,
+                  color: "#4D4459",
+                }}>
+                  Top {ATOMS_BY_TOPIC.length} topics
+                </span>
+              </div>
+              <div style={{
+                maxHeight: 380,
+                overflowY: "auto",
+                paddingRight: 4,
+              }}>
+                {ATOMS_BY_TOPIC.map(([topic, field, atoms], i) => (
+                  <div
+                    key={`${topic}-${field}`}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
+                      gap: 12,
+                      padding: "6px 0",
+                      borderBottom: i < ATOMS_BY_TOPIC.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 11,
+                    }}
+                  >
+                    <span style={{ color: "#4D4459", width: 22, flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ flex: 1, minWidth: 0, color: "#b8b0c4" }}>
+                      {topic}
+                      <span style={{ color: "#5c5468" }}> ({field})</span>
+                    </span>
+                    <span style={{ color: "#FFC627", flexShrink: 0 }}>{atoms.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
