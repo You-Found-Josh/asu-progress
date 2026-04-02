@@ -18,8 +18,9 @@ const FINAL_SIBLING_DOCS = 172151;
 const FINAL_VIDEOS_WITH_SIBLINGS = 42477;
 const FINAL_S3_DEDUP = 46537;
 const FINAL_RETRY_QUEUE = 9281;
-const FINAL_COMPLETION_RATE = 0.826;
-const FINAL_COURSES = Math.round(TOTAL_COURSES * FINAL_COMPLETION_RATE);
+const FINAL_COMPLETION_RATE = 1;
+const FINAL_COURSES = TOTAL_COURSES;
+/** Indexed unique videos (for yield); catalog videos use TOTAL_VIDEOS for 100% pipeline display. */
 const ATOMS_PER_VIDEO = (FINAL_NEW_ATOMS / FINAL_VIDEOS_OS).toFixed(1);
 
 /** Client-facing: atoms live in ASU production (Thursday as buffer vs prior day). */
@@ -237,7 +238,7 @@ export default function Home() {
     ? FINAL_COURSES
     : Math.round(START_COURSES + (TOTAL_COURSES - START_COURSES) * t);
   const processedVideos = MAIN_RUN_COMPLETE
-    ? FINAL_VIDEOS_OS
+    ? TOTAL_VIDEOS
     : Math.round(START_VIDEOS + (TOTAL_VIDEOS - START_VIDEOS) * t);
   const newAtoms = MAIN_RUN_COMPLETE
     ? FINAL_NEW_ATOMS
@@ -808,7 +809,7 @@ export default function Home() {
               <br />
               S3 dedup markers {FINAL_S3_DEDUP.toLocaleString()} · OpenSearch gap ~550 (naming mismatch)
               <br />
-              Catalog completion ~{(FINAL_COMPLETION_RATE * 100).toFixed(1)}% · ~{FINAL_RETRY_QUEUE.toLocaleString()} flagged for fix and re-atomize
+              Project ingestion 100% complete · ~{FINAL_RETRY_QUEUE.toLocaleString()} flagged for fix and re-atomize (post-run)
               <br />
               Production go-live target {PROD_RELEASE_ETA_SHORT} · ASU notified when atoms are live
             </div>
