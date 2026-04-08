@@ -12,7 +12,8 @@ const TOTAL_NEW_ATOMS = Math.round(TOTAL_VIDEOS * 6.2);
 const MAIN_RUN_COMPLETE = true;
 
 const FINAL_VIDEOS_OS = 45984;
-const FINAL_ATOMS_TOTAL = 280995;
+/** Single source of truth for platform atom count (OpenSearch / index total today). */
+const FINAL_ATOMS_TOTAL = 291536;
 const FINAL_NEW_ATOMS = FINAL_ATOMS_TOTAL - EXISTING_ATOMS;
 const FINAL_SIBLING_DOCS = 172151;
 const FINAL_VIDEOS_WITH_SIBLINGS = 42477;
@@ -344,7 +345,7 @@ export default function Home() {
 
     logs.push(line(
       isDone
-        ? `${totalAtoms.toLocaleString()} atoms in platform — main run complete · ~${FINAL_RETRY_QUEUE.toLocaleString()} queued for re-atomize`
+        ? `${totalAtoms.toLocaleString()} total atoms in platform today — main run complete · ~${FINAL_RETRY_QUEUE.toLocaleString()} queued for re-atomize`
         : `OpenSearch / S3 cross-check · ${processedVideos.toLocaleString()} videos · ${totalAtoms.toLocaleString()} atoms · failures queued for post-main re-run`,
       "gold", 350,
     ));
@@ -645,21 +646,36 @@ export default function Home() {
             }}>
               <div style={{
                 display: "flex",
-                alignItems: "center",
-                gap: 8,
+                alignItems: "flex-start",
+                gap: 10,
                 marginBottom: 14,
               }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ marginTop: 2 }}>
                   <path d="M8 1L14.5 4.75V11.25L8 15L1.5 11.25V4.75L8 1Z" stroke="#FFC627" strokeWidth="1.2" fill="none" opacity="0.6"/>
                   <circle cx="8" cy="8" r="2" fill="#FFC627" opacity="0.3"/>
                 </svg>
-                <span style={{
-                  fontSize: 11,
-                  color: "#7a7088",
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                  fontWeight: 500,
-                }}>Atoms in platform</span>
+                <div>
+                  <span style={{
+                    fontSize: 12,
+                    color: "#e8e0f0",
+                    fontWeight: 600,
+                    letterSpacing: 0.3,
+                    display: "block",
+                    lineHeight: 1.35,
+                  }}>
+                    Total atoms in the platform today
+                  </span>
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 9,
+                    color: "#5a5066",
+                    letterSpacing: 1.2,
+                    display: "block",
+                    marginTop: 6,
+                  }}>
+                    OPENSEARCH INDEX · LIVE COUNT
+                  </span>
+                </div>
               </div>
 
               <div style={{
@@ -668,30 +684,18 @@ export default function Home() {
                 fontWeight: 700,
                 color: "#e8e0f0",
                 lineHeight: 1,
-                marginBottom: 12,
+                marginBottom: 8,
               }}>
                 <AnimatedNumber target={totalAtoms} />
               </div>
-
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                <span style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10,
-                  color: "#7a7088",
-                  background: "rgba(255,255,255,0.03)",
-                  padding: "3px 8px",
-                  borderRadius: 4,
-                  border: "1px solid rgba(255,255,255,0.06)",
-                }}>{EXISTING_ATOMS.toLocaleString()} existing</span>
-                <span style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10,
-                  color: "#FFC627",
-                  background: "rgba(255,198,39,0.06)",
-                  padding: "3px 8px",
-                  borderRadius: 4,
-                  border: "1px solid rgba(255,198,39,0.12)",
-                }}>+{newAtoms.toLocaleString()} new</span>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 10,
+                color: "#7a7088",
+                marginBottom: 12,
+                lineHeight: 1.5,
+              }}>
+                {EXISTING_ATOMS.toLocaleString()} proof-of-concept + {newAtoms.toLocaleString()} catalog = {totalAtoms.toLocaleString()} total
               </div>
 
               <div style={{
@@ -701,7 +705,7 @@ export default function Home() {
                 fontStyle: "italic",
                 lineHeight: 1.5,
               }}>
-                Non-linear — atom count depends on<br />semantic density per video
+                Per-topic list below is ranked coverage (not an additive partition of this total)
               </div>
             </div>
 
